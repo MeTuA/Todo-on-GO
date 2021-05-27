@@ -5,6 +5,5 @@ import (
 )
 
 func main() {
-	//db.Init()
 	routes.Init()
 }

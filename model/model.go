@@ -14,3 +14,13 @@ type TokenDetails struct {
 	AtExpires    int64
 	RtExpires    int64
 }
+
+type Todo struct {
+	UserID int64  `json:"user_id"`
+	Title  string `json:"title"`
+}
+
+type AccessDetails struct {
+	AccessUuid string
+	UserId     uint64
+}
