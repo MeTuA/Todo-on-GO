@@ -1,9 +1,9 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"log"
-	"metua/app/db"
 	"metua/app/model"
 	"net/http"
 	"os"
@@ -13,10 +13,26 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis"
 	"github.com/twinj/uuid"
 )
 
-var redisClient = db.Init()
+var redisClient *redis.Client
+
+func init() {
+	//Initializing redis
+	dsn := os.Getenv("REDIS_DSN")
+	if len(dsn) == 0 {
+		dsn = "localhost:6379"
+	}
+	redisClient = redis.NewClient(&redis.Options{
+		Addr: dsn, //redis port
+	})
+	_, err := redisClient.Ping().Result()
+	if err != nil {
+		panic(err)
+	}
+}
 
 var user = model.User{
 	Id:       1,
@@ -114,20 +130,19 @@ func CreateAuth(id int, td *model.TokenDetails) error {
 }
 
 func ExtractToken(r *http.Request) string {
-	tokenString := r.Header.Get("Authorization")
-
-	strArr := strings.Split(tokenString, " ")
+	bearToken := r.Header.Get("Authorization")
+	fmt.Println(bearToken)
+	strArr := strings.Split(bearToken, " ")
 	if len(strArr) == 2 {
 		return strArr[1]
 	}
-	defer r.Body.Close()
+
 	return ""
 }
 
 func VerifyToken(r *http.Request) (*jwt.Token, error) {
-	tokenStr := ExtractToken(r)
-	defer r.Body.Close()
-	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+	tokenString := ExtractToken(r)
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexptected signing method: %v", token.Header["alg"])
 		}
@@ -136,64 +151,65 @@ func VerifyToken(r *http.Request) (*jwt.Token, error) {
 	})
 
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	return token, nil
+}
 
+func TokenValid(r *http.Request) error {
+	token, err := VerifyToken(r)
+	if err != nil {
+		return nil
+	}
+
+	if _, ok := token.Claims.(jwt.Claims); !ok || !token.Valid {
+		return err
+	}
+
+	return nil
 }
 
 func ExtractTokenMetadata(r *http.Request) (*model.AccessDetails, error) {
 	token, err := VerifyToken(r)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
-	defer r.Body.Close()
+
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if ok && token.Valid {
 		accessUuid, ok := claims["access_uuid"].(string)
 		if !ok {
 			return nil, err
 		}
+
 		userId, err := strconv.ParseUint(fmt.Sprintf("%.f", claims["user_id"]), 10, 64)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 
 		return &model.AccessDetails{
 			AccessUuid: accessUuid,
-			UserId:     userId,
+			UserId:     int64(userId),
 		}, nil
 	}
-
 	return nil, err
 }
-func TokenValid(r *http.Request) error {
-	token, err := VerifyToken(r)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if _, ok := token.Claims.(jwt.Claims); !ok && !token.Valid {
-		log.Fatal(ok)
-	}
-	defer r.Body.Close()
-	return nil
-}
 
-func FetchAuth(authD *model.AccessDetails) (uint64, error) {
+func FetchAuth(authD *model.AccessDetails) (int64, error) {
 	userid, err := redisClient.Get(authD.AccessUuid).Result()
 	if err != nil {
-		log.Fatal(err)
+		return 0, err
 	}
 
-	userId, _ := strconv.ParseUint(userid, 10, 64)
-
-	defer redisClient.Close()
-	return userId, nil
+	userID, _ := strconv.ParseUint(userid, 10, 64)
+	if authD.UserId != int64(userID) {
+		return 0, errors.New("unauthorized")
+	}
+	return int64(userID), nil
 }
-
 func CreateTodo(c *gin.Context) {
-	var td *model.Todo
+	var td model.Todo
 	if err := c.ShouldBindJSON(&td); err != nil {
 		c.JSON(http.StatusUnprocessableEntity, "invalid json")
 		return
@@ -204,12 +220,15 @@ func CreateTodo(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, "unauthorized")
 		return
 	}
+
 	userId, err := FetchAuth(tokenAuth)
 	if err != nil {
-		log.Fatal(err)
+		c.JSON(http.StatusUnauthorized, "unauthorized")
+		return
 	}
 
-	td.UserID = int64(userId)
+	td.UserID = userId
 
 	c.JSON(http.StatusCreated, td)
+
 }

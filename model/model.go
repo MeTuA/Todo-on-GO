@@ -22,5 +22,5 @@ type Todo struct {
 
 type AccessDetails struct {
 	AccessUuid string
-	UserId     uint64
+	UserId     int64
 }
