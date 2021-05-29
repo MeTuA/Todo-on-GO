@@ -232,3 +232,28 @@ func CreateTodo(c *gin.Context) {
 	c.JSON(http.StatusCreated, td)
 
 }
+
+func DeleteAuth(givenUuid string) (int64, error) {
+	deleted, err := redisClient.Del(givenUuid).Result()
+	if err != nil {
+		return 0, nil
+	}
+
+	return deleted, nil
+}
+
+func Logout(c *gin.Context) {
+	au, err := ExtractTokenMetadata(c.Request)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	deleted, delErr := DeleteAuth(au.AccessUuid)
+	if delErr != nil || deleted == 0 {
+		c.JSON(http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	c.JSON(http.StatusOK, "Successfully logged out")
+}

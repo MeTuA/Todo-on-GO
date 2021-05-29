@@ -10,10 +10,11 @@ import (
 
 func Init() {
 	routes := gin.Default()
-	gin.SetMode(gin.ReleaseMode)
+	//gin.SetMode(gin.ReleaseMode)
 	fmt.Println("Server is ready!")
 	routes.POST("/login", controller.Login)
 	routes.POST("/todo", controller.CreateTodo)
+	routes.POST("/logoutt", controller.Logout)
 	log.Fatal(routes.Run(":8080"))
 
 }
