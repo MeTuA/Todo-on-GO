@@ -1,6 +1,8 @@
 # Todo-on-GO
 Simple implementation of todo app on GO
 
+Used `go-gin`, `go-jwt`, `Redis`, `MongoDB`
+
 `Login` function responses login a user and uses the `CreateToken` and `CreateAuth` function.<br>
 `CreateToken` creates JWT with user claims. <br>
 `CreateAuth` saves JWT-metadata in Redis.<br>
